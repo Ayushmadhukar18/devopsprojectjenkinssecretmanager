@@ -1,83 +1,117 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — Jenkins Secret Manager{% endblock %}
+{% block topbar_title %}Dashboard{% endblock %}
+
 {% block content %}
-
-<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem;">
-  <div>
-    <h1 style="font-size:1.5rem; font-weight:700;">Secrets Dashboard</h1>
-    <p style="color:#64748b; font-size:0.9rem; margin-top:0.25rem;">Manage and monitor Jenkins credentials</p>
-  </div>
-  <a href="/secrets/add" class="btn btn-primary">+ Add Secret</a>
-</div>
-
 {% if expiring %}
-<div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:10px; padding:1rem 1.2rem; margin-bottom:1.5rem;">
-  <strong>⚠️ {{ expiring|length }} secret(s) expiring within 7 days:</strong>
+<div class="alert-banner">
+  ⚠ {{ expiring|length }} secret(s) expiring within 7 days:
   {% for s in expiring %}
-    <span style="margin-left:0.5rem; font-family:monospace;">{{ s.name }} ({{ s.days_until_expiry }}d)</span>{% if not loop.last %},{% endif %}
+    <strong>{{ s.name }}</strong> ({{ s.days_until_expiry }}d left){% if not loop.last %},{% endif %}
   {% endfor %}
 </div>
 {% endif %}
 
-<!-- Stats row -->
-<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-bottom:1.5rem;">
-  <div class="card" style="text-align:center;">
-    <div style="font-size:2rem; font-weight:700; color:#2563eb;">{{ secrets|length }}</div>
-    <div style="color:#64748b; font-size:0.85rem; margin-top:0.25rem;">Total Secrets</div>
+<!-- Stat cards -->
+<div class="stat-grid">
+  <div class="stat-card blue">
+    <div class="stat-label">Total Secrets</div>
+    <div class="stat-value">{{ secrets|length }}</div>
+    <div class="stat-icon">🔑</div>
   </div>
-  <div class="card" style="text-align:center;">
-    <div style="font-size:2rem; font-weight:700; color:#f59e0b;">{{ expiring|length }}</div>
-    <div style="color:#64748b; font-size:0.85rem; margin-top:0.25rem;">Expiring Soon</div>
+  <div class="stat-card amber">
+    <div class="stat-label">Expiring Soon</div>
+    <div class="stat-value">{{ expiring|length }}</div>
+    <div class="stat-icon">⏱</div>
   </div>
-  <div class="card" style="text-align:center;">
-    <div style="font-size:2rem; font-weight:700; color:#10b981;">{{ secrets|selectattr("status","eq","active")|list|length }}</div>
-    <div style="color:#64748b; font-size:0.85rem; margin-top:0.25rem;">Active</div>
+  <div class="stat-card green">
+    <div class="stat-label">Active</div>
+    <div class="stat-value">{{ secrets|selectattr("status","eq","active")|list|length }}</div>
+    <div class="stat-icon">✓</div>
+  </div>
+</div>
+
+<!-- Chart + info row -->
+<div class="grid2">
+  <!-- Status breakdown chart -->
+  <div class="card">
+    <div class="section-title">Status breakdown</div>
+    {% set total = secrets|length %}
+    {% set n_active   = secrets|selectattr("status","eq","active")|list|length %}
+    {% set n_expiring = secrets|selectattr("status","eq","expiring")|list|length %}
+    {% set n_expired  = secrets|selectattr("status","eq","expired")|list|length %}
+    <div class="chart-rows" id="chart-rows">
+      <div class="chart-row">
+        <div class="chart-lbl">Active</div>
+        <div class="chart-track"><div class="chart-fill" style="background:var(--green)" data-pct="{{ (n_active / total * 100)|int if total > 0 else 0 }}"></div></div>
+        <div class="chart-num">{{ n_active }}</div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-lbl">Expiring</div>
+        <div class="chart-track"><div class="chart-fill" style="background:var(--amber)" data-pct="{{ (n_expiring / total * 100)|int if total > 0 else 0 }}"></div></div>
+        <div class="chart-num">{{ n_expiring }}</div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-lbl">Expired</div>
+        <div class="chart-track"><div class="chart-fill" style="background:var(--red)" data-pct="{{ (n_expired / total * 100)|int if total > 0 else 0 }}"></div></div>
+        <div class="chart-num">{{ n_expired }}</div>
+      </div>
+    </div>
+    {% if total == 0 %}
+    <div style="text-align:center; color:var(--text3); font-size:0.82rem; margin-top:1rem;">No secrets yet</div>
+    {% endif %}
   </div>
 </div>
 
 <!-- Secrets table -->
 <div class="card">
+  <div class="table-toolbar">
+    <div class="section-title" style="margin-bottom:0;">All secrets</div>
+    <div style="display:flex; gap:0.75rem; align-items:center;">
+      <div class="search-wrap">
+        <span style="color:var(--text3); font-size:0.85rem;">🔍</span>
+        <input type="text" id="search-input" placeholder="Search secrets..." oninput="filterSecrets()">
+      </div>
+      <a href="/secrets/add" class="btn btn-primary">＋ Add Secret</a>
+    </div>
+  </div>
+
   {% if secrets %}
-  <table>
+  <table id="secrets-table">
     <thead>
       <tr>
         <th>Name</th>
         <th>Description</th>
         <th>Status</th>
         <th>Expires</th>
-        <th>Last Updated</th>
+        <th>Last updated</th>
         <th>Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for secret in secrets %}
-      <tr>
-        <td><code style="background:#f1f5f9; padding:2px 8px; border-radius:5px; font-size:0.88rem;">{{ secret.name }}</code></td>
-        <td style="color:#475569;">{{ secret.description or "—" }}</td>
-        <td>
-          <span class="badge-{{ secret.status }}">{{ secret.status }}</span>
-        </td>
-        <td style="color:#64748b; font-size:0.88rem;">
+      <tr data-name="{{ secret.name }}" data-desc="{{ secret.description }}">
+        <td><span class="secret-chip">{{ secret.name }}</span></td>
+        <td style="color:var(--text2);">{{ secret.description or '—' }}</td>
+        <td><span class="badge badge-{{ secret.status }}">{{ secret.status }}</span></td>
+        <td style="font-family:'JetBrains Mono',monospace; font-size:0.8rem;">
           {% if secret.expires_at %}
             {{ secret.expires_at.strftime('%Y-%m-%d') }}
-            ({{ secret.days_until_expiry }}d)
+            <span style="color:var(--text3);">({{ secret.days_until_expiry }}d)</span>
           {% else %}
-            Never
+            <span style="color:var(--text3);">Never</span>
           {% endif %}
         </td>
-        <td style="color:#64748b; font-size:0.88rem;">{{ secret.updated_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td style="font-family:'JetBrains Mono',monospace; font-size:0.78rem; color:var(--text3);">
+          {{ secret.updated_at.strftime('%Y-%m-%d %H:%M') }}
+        </td>
         <td>
-          <div style="display:flex; gap:0.5rem; align-items:center;">
-            <!-- Rotate modal trigger -->
-            <button class="btn btn-warning"
-              onclick="document.getElementById('rotate-{{ secret.id }}').style.display='flex'"
-              style="font-size:0.82rem; padding:0.35rem 0.8rem;">Rotate</button>
-
-            <!-- Delete -->
-            <form method="POST" action="/secrets/{{ secret.id }}/delete"
-                  onsubmit="return confirm('Delete {{ secret.name }}? This will also remove it from Jenkins.')">
-              <button class="btn btn-danger" type="submit"
-                style="font-size:0.82rem; padding:0.35rem 0.8rem;">Delete</button>
+          <div style="display:flex; gap:0.5rem;">
+            <button class="btn btn-warning" style="padding:0.3rem 0.7rem; font-size:0.78rem;"
+              onclick="openModal('modal-{{ secret.id }}')">↻ Rotate</button>
+            <form method="POST" action="/secrets/{{ secret.id }}/delete" style="display:inline;"
+              onsubmit="return confirm('Delete {{ secret.name }}?')">
+              <button class="btn btn-danger" type="submit" style="padding:0.3rem 0.7rem; font-size:0.78rem;">✕ Delete</button>
             </form>
           </div>
         </td>
@@ -85,35 +119,70 @@
       {% endfor %}
     </tbody>
   </table>
+  <div id="no-results" style="display:none; text-align:center; padding:2rem; color:var(--text3); font-size:0.88rem;">
+    No secrets match your search.
+  </div>
   {% else %}
-    <div style="text-align:center; padding:3rem; color:#94a3b8;">
-      <div style="font-size:3rem; margin-bottom:1rem;">🔑</div>
-      <p>No secrets yet. <a href="/secrets/add" style="color:#2563eb;">Add your first secret.</a></p>
-    </div>
+  <div class="empty-state">
+    <div class="empty-icon">🔑</div>
+    <div class="empty-text">No secrets yet. <a href="/secrets/add">Add your first secret →</a></div>
+  </div>
   {% endif %}
 </div>
 
-<!-- Rotate modals (one per secret, hidden) -->
+<!-- Rotate modals -->
 {% for secret in secrets %}
-<div id="rotate-{{ secret.id }}"
-     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4);
-            align-items:center; justify-content:center; z-index:999;">
-  <div class="card" style="width:420px; position:relative;">
-    <h2 style="margin-bottom:1rem; font-size:1.1rem;">Rotate: <code>{{ secret.name }}</code></h2>
+<div class="modal-overlay" id="modal-{{ secret.id }}">
+  <div class="modal">
+    <div class="modal-title">↻ Rotate <span class="secret-chip">{{ secret.name }}</span></div>
     <form method="POST" action="/secrets/{{ secret.id }}/rotate">
-      <div style="margin-bottom:1rem;">
-        <label style="display:block; font-size:0.85rem; color:#475569; margin-bottom:0.4rem;">New Value</label>
-        <input type="password" name="new_value" required placeholder="Enter new secret value"
-               style="width:100%; padding:0.6rem 0.9rem; border:1px solid #e2e8f0; border-radius:7px; font-size:0.95rem;">
+      <div class="form-group">
+        <label class="form-label">New value</label>
+        <input type="password" name="new_value" required placeholder="Enter new secret value" class="form-input mono">
       </div>
-      <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
-        <button type="button" class="btn btn-ghost"
-          onclick="document.getElementById('rotate-{{ secret.id }}').style.display='none'">Cancel</button>
-        <button type="submit" class="btn btn-warning">Rotate Secret</button>
+      <div style="display:flex; gap:0.7rem; justify-content:flex-end; margin-top:1.2rem;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-{{ secret.id }}')">Cancel</button>
+        <button type="submit" class="btn btn-warning">Rotate & Sync to Jenkins</button>
       </div>
     </form>
   </div>
 </div>
 {% endfor %}
+{% endblock %}
 
+{% block scripts %}
+<script>
+  // Animate chart bars on load
+  window.addEventListener('load', () => {
+    document.querySelectorAll('.chart-fill').forEach(el => {
+      el.style.width = el.dataset.pct + '%';
+    });
+  });
+
+  // Search/filter
+  function filterSecrets() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    const rows = document.querySelectorAll('#secrets-table tbody tr');
+    let visible = 0;
+    rows.forEach(row => {
+      const name = row.dataset.name.toLowerCase();
+      const desc = row.dataset.desc.toLowerCase();
+      const match = name.includes(q) || desc.includes(q);
+      row.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    document.getElementById('no-results').style.display = visible === 0 ? 'block' : 'none';
+  }
+
+  // Modal helpers
+  function openModal(id)  { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+  // Close modal on overlay click
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) overlay.classList.remove('open');
+    });
+  });
+</script>
 {% endblock %}

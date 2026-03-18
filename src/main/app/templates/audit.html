@@ -1,13 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Audit Log — Jenkins Secret Manager{% endblock %}
-{% block content %}
+{% block topbar_title %}Audit Log{% endblock %}
 
-<h1 style="font-size:1.5rem; font-weight:700; margin-bottom:0.4rem;">Audit Log</h1>
-<p style="color:#64748b; font-size:0.9rem; margin-bottom:1.5rem;">Last 100 actions on secrets.</p>
+{% block content %}
+<div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:1.5rem;">
+  <div>
+    <h1 style="font-size:1.4rem; font-weight:800; margin-bottom:0.3rem;">Audit Log</h1>
+    <p style="color:var(--text3); font-size:0.86rem;">Complete record of all secret operations</p>
+  </div>
+  <div style="display:flex; gap:0.5rem;">
+    <span class="badge badge-active" style="font-size:0.75rem; padding:0.3rem 0.8rem;">{{ logs|length }} entries</span>
+  </div>
+</div>
 
 <div class="card">
+  <div class="table-toolbar">
+    <div class="section-title" style="margin-bottom:0;">Recent actions</div>
+    <div class="search-wrap">
+      <span style="color:var(--text3); font-size:0.85rem;">🔍</span>
+      <input type="text" id="log-search" placeholder="Filter by secret or action..." oninput="filterLogs()">
+    </div>
+  </div>
+
   {% if logs %}
-  <table>
+  <table id="log-table">
     <thead>
       <tr>
         <th>Timestamp</th>
@@ -19,30 +35,53 @@
     </thead>
     <tbody>
       {% for log in logs %}
-      <tr>
-        <td style="color:#64748b; font-size:0.85rem; white-space:nowrap;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      <tr data-action="{{ log.action }}" data-secret="{{ log.secret_name }}">
+        <td style="font-family:'JetBrains Mono',monospace; font-size:0.78rem; color:var(--text3); white-space:nowrap;">
+          {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+        </td>
         <td>
-          {% if log.action == "CREATE" %}
-            <span style="background:#d1fae5; color:#065f46; padding:2px 10px; border-radius:12px; font-size:0.8rem;">CREATE</span>
-          {% elif log.action == "ROTATE" %}
-            <span style="background:#fef3c7; color:#92400e; padding:2px 10px; border-radius:12px; font-size:0.8rem;">ROTATE</span>
-          {% elif log.action == "DELETE" %}
-            <span style="background:#fee2e2; color:#991b1b; padding:2px 10px; border-radius:12px; font-size:0.8rem;">DELETE</span>
+          {% if log.action == 'CREATE' %}
+            <span class="badge" style="background:var(--green-bg); color:var(--green);">＋ CREATE</span>
+          {% elif log.action == 'ROTATE' %}
+            <span class="badge" style="background:var(--amber-bg); color:var(--amber);">↻ ROTATE</span>
+          {% elif log.action == 'DELETE' %}
+            <span class="badge" style="background:var(--red-bg); color:var(--red);">✕ DELETE</span>
           {% else %}
-            <span style="background:#e0f2fe; color:#0c4a6e; padding:2px 10px; border-radius:12px; font-size:0.8rem;">{{ log.action }}</span>
+            <span class="badge" style="background:var(--blue-bg); color:var(--accent);">{{ log.action }}</span>
           {% endif %}
         </td>
-        <td><code style="background:#f1f5f9; padding:2px 8px; border-radius:5px; font-size:0.88rem;">{{ log.secret_name }}</code></td>
-        <td style="color:#475569;">{{ log.user }}</td>
-        <td style="color:#94a3b8; font-size:0.85rem;">{{ log.details or "—" }}</td>
+        <td><span class="secret-chip">{{ log.secret_name }}</span></td>
+        <td style="color:var(--text2); font-size:0.84rem;">{{ log.user }}</td>
+        <td style="color:var(--text3); font-size:0.82rem;">{{ log.details or '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  <div id="log-no-results" style="display:none; text-align:center; padding:2rem; color:var(--text3); font-size:0.88rem;">
+    No entries match your filter.
+  </div>
   {% else %}
-    <div style="text-align:center; padding:3rem; color:#94a3b8;">
-      <p>No actions logged yet.</p>
-    </div>
+  <div class="empty-state">
+    <div class="empty-icon">≡</div>
+    <div class="empty-text">No actions logged yet. <a href="/secrets/add">Add a secret to get started.</a></div>
+  </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function filterLogs() {
+    const q = document.getElementById('log-search').value.toLowerCase();
+    const rows = document.querySelectorAll('#log-table tbody tr');
+    let visible = 0;
+    rows.forEach(row => {
+      const match = row.dataset.action.toLowerCase().includes(q) ||
+                    row.dataset.secret.toLowerCase().includes(q);
+      row.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    document.getElementById('log-no-results').style.display = visible === 0 ? 'block' : 'none';
+  }
+</script>
 {% endblock %}
