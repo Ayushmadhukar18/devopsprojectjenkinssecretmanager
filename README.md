@@ -59,7 +59,7 @@ Jenkins pipelines need access to sensitive credentials — API keys, database pa
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/devopsprojectjenkinssecretmanager.git
+   git clone https://github.com/Ayushmadhukar18/devopsprojectjenkinssecretmanager.git
    cd devopsprojectjenkinssecretmanager
    ```
 
@@ -157,5 +157,5 @@ pytest tests/unit/ --cov=main/app --cov-report=term
 
 ## Contact
 Student: Ayush Madhukar
-GitHub: YOUR_GITHUB_USERNAME
+GitHub: https://github.com/Ayushmadhukar18
 Course Coordinator: Mr. Jay Shankar Sharma — Thursday & Friday, 5–6 PM, LHC 308F
