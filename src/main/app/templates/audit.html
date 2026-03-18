@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — Jenkins Secret Manager{% endblock %}
+{% block content %}
+
+<h1 style="font-size:1.5rem; font-weight:700; margin-bottom:0.4rem;">Audit Log</h1>
+<p style="color:#64748b; font-size:0.9rem; margin-bottom:1.5rem;">Last 100 actions on secrets.</p>
+
+<div class="card">
+  {% if logs %}
+  <table>
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Action</th>
+        <th>Secret</th>
+        <th>User</th>
+        <th>Details</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td style="color:#64748b; font-size:0.85rem; white-space:nowrap;">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>
+          {% if log.action == "CREATE" %}
+            <span style="background:#d1fae5; color:#065f46; padding:2px 10px; border-radius:12px; font-size:0.8rem;">CREATE</span>
+          {% elif log.action == "ROTATE" %}
+            <span style="background:#fef3c7; color:#92400e; padding:2px 10px; border-radius:12px; font-size:0.8rem;">ROTATE</span>
+          {% elif log.action == "DELETE" %}
+            <span style="background:#fee2e2; color:#991b1b; padding:2px 10px; border-radius:12px; font-size:0.8rem;">DELETE</span>
+          {% else %}
+            <span style="background:#e0f2fe; color:#0c4a6e; padding:2px 10px; border-radius:12px; font-size:0.8rem;">{{ log.action }}</span>
+          {% endif %}
+        </td>
+        <td><code style="background:#f1f5f9; padding:2px 8px; border-radius:5px; font-size:0.88rem;">{{ log.secret_name }}</code></td>
+        <td style="color:#475569;">{{ log.user }}</td>
+        <td style="color:#94a3b8; font-size:0.85rem;">{{ log.details or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div style="text-align:center; padding:3rem; color:#94a3b8;">
+      <p>No actions logged yet.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

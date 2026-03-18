@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Jenkins Secret Manager{% endblock %}
+{% block content %}
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem;">
+  <div>
+    <h1 style="font-size:1.5rem; font-weight:700;">Secrets Dashboard</h1>
+    <p style="color:#64748b; font-size:0.9rem; margin-top:0.25rem;">Manage and monitor Jenkins credentials</p>
+  </div>
+  <a href="/secrets/add" class="btn btn-primary">+ Add Secret</a>
+</div>
+
+{% if expiring %}
+<div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:10px; padding:1rem 1.2rem; margin-bottom:1.5rem;">
+  <strong>⚠️ {{ expiring|length }} secret(s) expiring within 7 days:</strong>
+  {% for s in expiring %}
+    <span style="margin-left:0.5rem; font-family:monospace;">{{ s.name }} ({{ s.days_until_expiry }}d)</span>{% if not loop.last %},{% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Stats row -->
+<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-bottom:1.5rem;">
+  <div class="card" style="text-align:center;">
+    <div style="font-size:2rem; font-weight:700; color:#2563eb;">{{ secrets|length }}</div>
+    <div style="color:#64748b; font-size:0.85rem; margin-top:0.25rem;">Total Secrets</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div style="font-size:2rem; font-weight:700; color:#f59e0b;">{{ expiring|length }}</div>
+    <div style="color:#64748b; font-size:0.85rem; margin-top:0.25rem;">Expiring Soon</div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div style="font-size:2rem; font-weight:700; color:#10b981;">{{ secrets|selectattr("status","eq","active")|list|length }}</div>
+    <div style="color:#64748b; font-size:0.85rem; margin-top:0.25rem;">Active</div>
+  </div>
+</div>
+
+<!-- Secrets table -->
+<div class="card">
+  {% if secrets %}
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+        <th>Status</th>
+        <th>Expires</th>
+        <th>Last Updated</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for secret in secrets %}
+      <tr>
+        <td><code style="background:#f1f5f9; padding:2px 8px; border-radius:5px; font-size:0.88rem;">{{ secret.name }}</code></td>
+        <td style="color:#475569;">{{ secret.description or "—" }}</td>
+        <td>
+          <span class="badge-{{ secret.status }}">{{ secret.status }}</span>
+        </td>
+        <td style="color:#64748b; font-size:0.88rem;">
+          {% if secret.expires_at %}
+            {{ secret.expires_at.strftime('%Y-%m-%d') }}
+            ({{ secret.days_until_expiry }}d)
+          {% else %}
+            Never
+          {% endif %}
+        </td>
+        <td style="color:#64748b; font-size:0.88rem;">{{ secret.updated_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>
+          <div style="display:flex; gap:0.5rem; align-items:center;">
+            <!-- Rotate modal trigger -->
+            <button class="btn btn-warning"
+              onclick="document.getElementById('rotate-{{ secret.id }}').style.display='flex'"
+              style="font-size:0.82rem; padding:0.35rem 0.8rem;">Rotate</button>
+
+            <!-- Delete -->
+            <form method="POST" action="/secrets/{{ secret.id }}/delete"
+                  onsubmit="return confirm('Delete {{ secret.name }}? This will also remove it from Jenkins.')">
+              <button class="btn btn-danger" type="submit"
+                style="font-size:0.82rem; padding:0.35rem 0.8rem;">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div style="text-align:center; padding:3rem; color:#94a3b8;">
+      <div style="font-size:3rem; margin-bottom:1rem;">🔑</div>
+      <p>No secrets yet. <a href="/secrets/add" style="color:#2563eb;">Add your first secret.</a></p>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Rotate modals (one per secret, hidden) -->
+{% for secret in secrets %}
+<div id="rotate-{{ secret.id }}"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4);
+            align-items:center; justify-content:center; z-index:999;">
+  <div class="card" style="width:420px; position:relative;">
+    <h2 style="margin-bottom:1rem; font-size:1.1rem;">Rotate: <code>{{ secret.name }}</code></h2>
+    <form method="POST" action="/secrets/{{ secret.id }}/rotate">
+      <div style="margin-bottom:1rem;">
+        <label style="display:block; font-size:0.85rem; color:#475569; margin-bottom:0.4rem;">New Value</label>
+        <input type="password" name="new_value" required placeholder="Enter new secret value"
+               style="width:100%; padding:0.6rem 0.9rem; border:1px solid #e2e8f0; border-radius:7px; font-size:0.95rem;">
+      </div>
+      <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
+        <button type="button" class="btn btn-ghost"
+          onclick="document.getElementById('rotate-{{ secret.id }}').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-warning">Rotate Secret</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

@@ -1,0 +1,91 @@
+pipeline {
+    agent any
+
+    environment {
+        APP_NAME   = 'devopsprojectjenkinssecretmanager'
+        IMAGE_TAG  = "${env.BUILD_ID}"
+        REGISTRY   = 'docker.io'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/YOUR_USERNAME/devopsprojectjenkinssecretmanager.git'
+                echo "Building commit: ${env.GIT_COMMIT}"
+            }
+        }
+
+        stage('Code Quality') {
+            steps {
+                sh '''
+                    pip install flake8 --quiet
+                    flake8 src/main/app/ --max-line-length=120 --exclude=__pycache__ || true
+                '''
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh """
+                    docker build -t ${APP_NAME}:${IMAGE_TAG} \\
+                        -f infrastructure/docker/Dockerfile .
+                    docker tag ${APP_NAME}:${IMAGE_TAG} ${APP_NAME}:latest
+                """
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''
+                    pip install -r src/main/requirements.txt --quiet
+                    cd src && python -m pytest tests/unit/ -v --tb=short
+                '''
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'test-results/*.xml'
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${APP_NAME}:${IMAGE_TAG} || true"
+            }
+        }
+
+        stage('Deploy (Staging)') {
+            when { branch 'develop' }
+            steps {
+                sh '''
+                    cd infrastructure/docker
+                    docker-compose up -d --build
+                '''
+            }
+        }
+
+        stage('Deploy (Production)') {
+            when { branch 'main' }
+            steps {
+                input message: 'Deploy to production?', ok: 'Deploy'
+                sh '''
+                    kubectl apply -f infrastructure/kubernetes/
+                    kubectl rollout status deployment/secret-manager
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline succeeded — build #${env.BUILD_ID}"
+        }
+        failure {
+            echo "Pipeline FAILED — check logs at ${env.BUILD_URL}"
+        }
+        always {
+            sh "docker rmi ${APP_NAME}:${IMAGE_TAG} || true"
+        }
+    }
+}
