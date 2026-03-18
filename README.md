@@ -1,11 +1,11 @@
 # Jenkins Secret Manager
 
-Student Name: Ayush Madhukar
-Registration No: 23FE10CSE00334
-Course: CSE3253 DevOps [PE6]
-Semester: VI (2025–2026)
-Project Type: Jenkins & CI
-Difficulty: Intermediate
+Student Name: Ayush Madhukar  
+Registration No: 23FE10CSE00334  
+Course: CSE3253 DevOps [PE6]  
+Semester: VI (2025–2026)  
+Project Type: Jenkins & CI  
+Difficulty: Intermediate  
 
 ---
 
