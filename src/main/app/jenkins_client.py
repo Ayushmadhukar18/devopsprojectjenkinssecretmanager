@@ -10,7 +10,7 @@ class JenkinsClient:
         self.base_url = os.environ.get("JENKINS_URL", "http://localhost:8080")
         self.user = os.environ.get("JENKINS_USER", "admin")
         self.token = os.environ.get("JENKINS_TOKEN", "")
-        self.store = "system::system::jenkins"
+        self.store = "system"
         self.domain = "_"
 
     @property
