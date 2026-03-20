@@ -1,11 +1,8 @@
 import os
-import json
 import requests
 from requests.auth import HTTPBasicAuth
 
 class JenkinsClient:
-    """Talks to Jenkins Credentials API to sync secrets."""
-
     def __init__(self):
         self.base_url = os.environ.get("JENKINS_URL", "http://localhost:8080")
         self.user = os.environ.get("JENKINS_USER", "admin")
@@ -19,8 +16,20 @@ class JenkinsClient:
 
     @property
     def _cred_url(self):
-        return (f"{self.base_url}/credentials/store/{self.store}"
-                f"/domain/{self.domain}/credential")
+        return f"{self.base_url}/credentials/store/{self.store}/domain/{self.domain}"
+
+    def _get_crumb(self):
+        try:
+            r = requests.get(
+                f"{self.base_url}/crumbIssuer/api/json",
+                auth=self._auth, timeout=5
+            )
+            if r.status_code == 200:
+                data = r.json()
+                return {data["crumbRequestField"]: data["crumb"]}
+        except Exception as e:
+            print(f"[Jenkins] crumb failed: {e}")
+        return {}
 
     def is_connected(self) -> bool:
         try:
@@ -30,42 +39,41 @@ class JenkinsClient:
             return False
 
     def push_credential(self, name: str, value: str, description: str = "") -> bool:
-        """Create or update a Jenkins secret-text credential."""
-        payload = {
-            "": "com.cloudbees.plugins.credentials.impl.StringCredentialsImpl",
-            "credentials": {
-                "scope": "GLOBAL",
-                "id": name,
-                "description": description,
-                "secret": value,
-                "$class": "com.cloudbees.plugins.credentials.impl.StringCredentialsImpl"
-            }
-        }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        xml_body = self._to_xml(name, value, description)
         try:
-            # Try update first
-            update_url = f"{self._cred_url}/{name}/config.xml"
-            xml_body = self._to_xml(name, value, description)
-            r = requests.post(update_url, data=xml_body,
-                              headers={"Content-Type": "application/xml"},
-                              auth=self._auth, timeout=5)
-            if r.status_code == 404:
+            crumb_data = self._get_crumb()
+            headers = {"Content-Type": "application/xml"}
+            headers.update(crumb_data)
+
+            # Check if exists
+            check_url = f"{self._cred_url}/credential/{name}/config.xml"
+            check = requests.get(check_url, auth=self._auth, timeout=5)
+            print(f"[Jenkins] CHECK {name}: status={check.status_code}")
+
+            if check.status_code == 200:
+                # Update existing
+                r = requests.post(check_url, data=xml_body,
+                                  headers=headers, auth=self._auth, timeout=5)
+                print(f"[Jenkins] UPDATE {name}: status={r.status_code}")
+                return r.status_code in (200, 201, 204)
+            else:
                 # Create new
-                r = requests.post(
-                    f"{self._cred_url}/createItem",
-                    data=f"json={json.dumps(payload)}",
-                    headers=headers,
-                    auth=self._auth, timeout=5
-                )
-            return r.status_code in (200, 201)
+                create_url = f"{self.base_url}/credentials/store/{self.store}/domain/{self.domain}/createItem"
+                r = requests.post(create_url, data=xml_body,
+                                  headers=headers, auth=self._auth, timeout=5)
+                print(f"[Jenkins] CREATE {name}: status={r.status_code} body={r.text[:300]}")
+                return r.status_code in (200, 201, 302)
+
         except Exception as e:
             print(f"[Jenkins] push_credential failed: {e}")
             return False
 
     def delete_credential(self, name: str) -> bool:
         try:
-            r = requests.delete(f"{self._cred_url}/{name}",
-                                auth=self._auth, timeout=5)
+            headers = self._get_crumb()
+            r = requests.delete(f"{self._cred_url}/credential/{name}",
+                                headers=headers, auth=self._auth, timeout=5)
+            print(f"[Jenkins] DELETE {name}: status={r.status_code}")
             return r.status_code in (200, 204)
         except Exception as e:
             print(f"[Jenkins] delete_credential failed: {e}")
@@ -73,8 +81,7 @@ class JenkinsClient:
 
     def list_credentials(self) -> list:
         try:
-            r = requests.get(f"{self.base_url}/credentials/store/{self.store}"
-                             f"/domain/{self.domain}/api/json?depth=1",
+            r = requests.get(f"{self._cred_url}/api/json?depth=1",
                              auth=self._auth, timeout=5)
             if r.status_code == 200:
                 return r.json().get("credentials", [])
@@ -85,7 +92,7 @@ class JenkinsClient:
     @staticmethod
     def _to_xml(name: str, value: str, description: str) -> str:
         return f"""<?xml version='1.1' encoding='UTF-8'?>
-<org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl>
+<org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl plugin="plain-credentials">
   <scope>GLOBAL</scope>
   <id>{name}</id>
   <description>{description}</description>
