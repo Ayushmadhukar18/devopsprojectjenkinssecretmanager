@@ -39,30 +39,44 @@ class JenkinsClient:
             return False
 
     def push_credential(self, name: str, value: str, description: str = "") -> bool:
-        xml_body = self._to_xml(name, value, description)
+        import json as _json
         try:
             crumb_data = self._get_crumb()
-            headers = {"Content-Type": "application/xml"}
-            headers.update(crumb_data)
 
-            # Check if exists
+            # Check if credential already exists
             check_url = f"{self._cred_url}/credential/{name}/config.xml"
             check = requests.get(check_url, auth=self._auth, timeout=5)
             print(f"[Jenkins] CHECK {name}: status={check.status_code}")
 
             if check.status_code == 200:
-                # Update existing
+                # --- UPDATE existing credential via XML POST ---
+                xml_body = self._to_xml(name, value, description)
+                headers = {"Content-Type": "application/xml"}
+                headers.update(crumb_data)
                 r = requests.post(check_url, data=xml_body,
                                   headers=headers, auth=self._auth, timeout=5)
                 print(f"[Jenkins] UPDATE {name}: status={r.status_code}")
                 return r.status_code in (200, 201, 204)
             else:
-                # Create new
-                create_url = f"{self.base_url}/credentials/store/{self.store}/domain/{self.domain}/createItem"
-                r = requests.post(create_url, data=xml_body,
+                # --- CREATE new credential via form-encoded JSON ---
+                payload = {
+                    "": "0",
+                    "credentials": {
+                        "scope": "GLOBAL",
+                        "id": name,
+                        "description": description,
+                        "$class": "org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl",
+                        "secret": value,
+                    }
+                }
+                form_body = "json=" + requests.utils.quote(_json.dumps(payload))
+                headers = {"Content-Type": "application/x-www-form-urlencoded"}
+                headers.update(crumb_data)
+                create_url = f"{self._cred_url}/createCredentials"
+                r = requests.post(create_url, data=form_body,
                                   headers=headers, auth=self._auth, timeout=5)
                 print(f"[Jenkins] CREATE {name}: status={r.status_code} body={r.text[:300]}")
-                return r.status_code in (200, 201, 302)
+                return r.status_code in (200, 201, 204, 302)
 
         except Exception as e:
             print(f"[Jenkins] push_credential failed: {e}")
